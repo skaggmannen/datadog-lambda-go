@@ -129,27 +129,29 @@ func (l *Listener) HandlerStarted(ctx context.Context, msg json.RawMessage) cont
 
 // HandlerFinished implemented as part of the wrapper.HandlerListener interface
 func (l *Listener) HandlerFinished(ctx context.Context, err error) {
-	if l.isAgentRunning {
-		// use the agent
-		// flush the metrics from the DogStatsD client to the Agent
-		if l.statsdClient != nil {
-			if err := l.statsdClient.Flush(); err != nil {
-				logger.Error(fmt.Errorf("can't flush the DogStatsD client: %s", err))
+	go func ()  {
+		if l.isAgentRunning {
+			// use the agent
+			// flush the metrics from the DogStatsD client to the Agent
+			if l.statsdClient != nil {
+				if err := l.statsdClient.Flush(); err != nil {
+					logger.Error(fmt.Errorf("can't flush the DogStatsD client: %s", err))
+				}
+			}
+			// send a message to the Agent to flush the metrics
+			if err := l.extensionManager.Flush(); err != nil {
+				logger.Error(fmt.Errorf("error while flushing the metrics: %s", err))
+			}
+		} else {
+			// use the api
+			if l.processor != nil {
+				if err != nil {
+					l.submitEnhancedMetrics("errors", ctx)
+				}
+				l.processor.FinishProcessing()
 			}
 		}
-		// send a message to the Agent to flush the metrics
-		if err := l.extensionManager.Flush(); err != nil {
-			logger.Error(fmt.Errorf("error while flushing the metrics: %s", err))
-		}
-	} else {
-		// use the api
-		if l.processor != nil {
-			if err != nil {
-				l.submitEnhancedMetrics("errors", ctx)
-			}
-			l.processor.FinishProcessing()
-		}
-	}
+	}()
 }
 
 // AddDistributionMetric sends a distribution metric
